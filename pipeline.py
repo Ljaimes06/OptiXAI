@@ -15,8 +15,7 @@ MARKER_SIZE_MM = 37.2
 
 MODEL_NAME = "facebook/sam2.1-hiera-tiny"
 
-# Broad plausible eyeglass-lens dimensions.
-# These are NOT tied to one specific test lens.
+# Broad plausible eyeglass-lens dimensions
 MIN_LENS_WIDTH_MM = 35
 MAX_LENS_WIDTH_MM = 85
 
@@ -60,6 +59,122 @@ detector = cv2.aruco.ArucoDetector(
 
 
 # ============================================================
+# SVG EXPORT FUNCTION
+# ============================================================
+
+def create_svg_from_contour(
+    contour_mm,
+    output_path,
+    margin_mm=5
+):
+
+    # Make a copy so original contour is not modified
+    points = np.array(
+        contour_mm,
+        dtype=np.float32
+    ).copy()
+
+    if len(points) < 3:
+        raise RuntimeError(
+            "Not enough contour points to create SVG."
+        )
+
+    # --------------------------------------------------------
+    # Move contour close to SVG origin
+    # --------------------------------------------------------
+
+    min_x = np.min(
+        points[:, 0]
+    )
+
+    min_y = np.min(
+        points[:, 1]
+    )
+
+    points[:, 0] -= min_x
+    points[:, 1] -= min_y
+
+
+    # --------------------------------------------------------
+    # Add printing margin
+    # --------------------------------------------------------
+
+    points[:, 0] += margin_mm
+    points[:, 1] += margin_mm
+
+
+    # --------------------------------------------------------
+    # SVG physical dimensions in MILLIMETERS
+    # --------------------------------------------------------
+
+    width_mm = (
+        np.max(points[:, 0])
+        +
+        margin_mm
+    )
+
+    height_mm = (
+        np.max(points[:, 1])
+        +
+        margin_mm
+    )
+
+
+    # --------------------------------------------------------
+    # Convert contour points to SVG polygon string
+    # --------------------------------------------------------
+
+    point_string = " ".join(
+        f"{x:.3f},{y:.3f}"
+        for x, y in points
+    )
+
+
+    # --------------------------------------------------------
+    # Build SVG
+    #
+    # width and height use mm explicitly,
+    # which allows 1:1 physical printing.
+    # --------------------------------------------------------
+
+    svg = f"""<?xml version="1.0" encoding="UTF-8"?>
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="{width_mm:.3f}mm"
+    height="{height_mm:.3f}mm"
+    viewBox="0 0 {width_mm:.3f} {height_mm:.3f}">
+
+    <polygon
+        points="{point_string}"
+        fill="none"
+        stroke="black"
+        stroke-width="0.3"
+        stroke-linejoin="round"
+    />
+
+</svg>
+"""
+
+
+    # --------------------------------------------------------
+    # Save SVG
+    # --------------------------------------------------------
+
+    with open(
+        output_path,
+        "w",
+        encoding="utf-8"
+    ) as file:
+
+        file.write(
+            svg
+        )
+
+
+    return output_path
+
+
+# ============================================================
 # MAIN MEASUREMENT FUNCTION
 # ============================================================
 
@@ -83,6 +198,7 @@ def measure_lens(
     )
 
     if image is None:
+
         raise RuntimeError(
             "Could not load image."
         )
@@ -114,17 +230,18 @@ def measure_lens(
 
 
     # ========================================================
-    # 3. FALLBACK:
-    # WHITE BORDER FOR EDGE-CROPPED MARKERS
+    # 3. FALLBACK FOR MARKERS NEAR IMAGE EDGE
     # ========================================================
 
     used_padding = False
+
 
     if ids is None or len(ids) < 4:
 
         used_padding = True
 
         padding = 30
+
 
         padded_image = cv2.copyMakeBorder(
             image,
@@ -133,13 +250,19 @@ def measure_lens(
             padding,
             padding,
             cv2.BORDER_CONSTANT,
-            value=(255, 255, 255)
+            value=(
+                255,
+                255,
+                255
+            )
         )
+
 
         padded_gray = cv2.cvtColor(
             padded_image,
             cv2.COLOR_BGR2GRAY
         )
+
 
         (
             padded_corners,
@@ -154,6 +277,7 @@ def measure_lens(
 
             adjusted_corners = []
 
+
             for marker in padded_corners:
 
                 adjusted = marker.copy()
@@ -164,6 +288,7 @@ def measure_lens(
                 adjusted_corners.append(
                     adjusted
                 )
+
 
             corners = adjusted_corners
             ids = padded_ids
@@ -185,7 +310,7 @@ def measure_lens(
 
         raise RuntimeError(
             f"Only {len(ids)} ArUco markers detected. "
-            "Make sure all four markers are clearly visible."
+            "Make sure all four markers are visible."
         )
 
 
@@ -194,6 +319,7 @@ def measure_lens(
     # ========================================================
 
     aruco_image = image.copy()
+
 
     cv2.aruco.drawDetectedMarkers(
         aruco_image,
@@ -207,6 +333,7 @@ def measure_lens(
         "aruco_detected.jpg"
     )
 
+
     cv2.imwrite(
         aruco_path,
         aruco_image
@@ -218,6 +345,7 @@ def measure_lens(
     # ========================================================
 
     marker_centers = []
+
 
     for marker in corners:
 
@@ -243,16 +371,19 @@ def measure_lens(
 
 
     # ========================================================
-    # 7. ORDER MARKER CENTERS
+    # 7. ORDER MARKERS
     #
-    # 0 = TOP LEFT
-    # 1 = TOP RIGHT
-    # 2 = BOTTOM RIGHT
-    # 3 = BOTTOM LEFT
+    # TL
+    # TR
+    # BR
+    # BL
     # ========================================================
 
     ordered = np.zeros(
-        (4, 2),
+        (
+            4,
+            2
+        ),
         dtype=np.float32
     )
 
@@ -261,6 +392,7 @@ def measure_lens(
         axis=1
     )
 
+
     differences = np.diff(
         marker_centers,
         axis=1
@@ -268,19 +400,27 @@ def measure_lens(
 
 
     ordered[0] = marker_centers[
-        np.argmin(sums)
+        np.argmin(
+            sums
+        )
     ]
 
     ordered[2] = marker_centers[
-        np.argmax(sums)
+        np.argmax(
+            sums
+        )
     ]
 
     ordered[1] = marker_centers[
-        np.argmin(differences)
+        np.argmin(
+            differences
+        )
     ]
 
     ordered[3] = marker_centers[
-        np.argmax(differences)
+        np.argmax(
+            differences
+        )
     ]
 
 
@@ -291,23 +431,34 @@ def measure_lens(
 
 
     # ========================================================
-    # 8. CALCULATE RECTIFIED IMAGE SIZE
+    # 8. RECTIFIED IMAGE SIZE
     # ========================================================
 
     top_width = np.linalg.norm(
-        top_right - top_left
+        top_right
+        -
+        top_left
     )
+
 
     bottom_width = np.linalg.norm(
-        bottom_right - bottom_left
+        bottom_right
+        -
+        bottom_left
     )
+
 
     left_height = np.linalg.norm(
-        bottom_left - top_left
+        bottom_left
+        -
+        top_left
     )
 
+
     right_height = np.linalg.norm(
-        bottom_right - top_right
+        bottom_right
+        -
+        top_right
     )
 
 
@@ -317,6 +468,7 @@ def measure_lens(
             bottom_width
         )
     )
+
 
     output_height = int(
         max(
@@ -328,7 +480,8 @@ def measure_lens(
 
     if (
         output_width <= 0
-        or output_height <= 0
+        or
+        output_height <= 0
     ):
 
         raise RuntimeError(
@@ -342,7 +495,10 @@ def measure_lens(
 
     destination = np.array(
         [
-            [0, 0],
+            [
+                0,
+                0
+            ],
 
             [
                 output_width - 1,
@@ -388,6 +544,7 @@ def measure_lens(
         "rectified.jpg"
     )
 
+
     cv2.imwrite(
         rectified_path,
         rectified
@@ -395,9 +552,7 @@ def measure_lens(
 
 
     # ========================================================
-    # 11. CALIBRATION
-    #
-    # Separate X and Y scale
+    # 11. PIXEL / MILLIMETER CALIBRATION
     # ========================================================
 
     horizontal_sides = []
@@ -424,17 +579,12 @@ def measure_lens(
         )[0]
 
 
-        # Marker corner order:
-        # 0 = TL
-        # 1 = TR
-        # 2 = BR
-        # 3 = BL
-
         top_side = np.linalg.norm(
             transformed[1]
             -
             transformed[0]
         )
+
 
         bottom_side = np.linalg.norm(
             transformed[2]
@@ -442,11 +592,13 @@ def measure_lens(
             transformed[3]
         )
 
+
         left_side = np.linalg.norm(
             transformed[3]
             -
             transformed[0]
         )
+
 
         right_side = np.linalg.norm(
             transformed[2]
@@ -462,6 +614,7 @@ def measure_lens(
             ]
         )
 
+
         vertical_sides.extend(
             [
                 left_side,
@@ -471,20 +624,25 @@ def measure_lens(
 
 
     pixels_per_mm_x = (
-        np.mean(horizontal_sides)
+        np.mean(
+            horizontal_sides
+        )
         /
         MARKER_SIZE_MM
     )
 
+
     pixels_per_mm_y = (
-        np.mean(vertical_sides)
+        np.mean(
+            vertical_sides
+        )
         /
         MARKER_SIZE_MM
     )
 
 
     # ========================================================
-    # 12. PREPARE RECTIFIED IMAGE FOR SAM
+    # 12. PREPARE IMAGE FOR SAM 2
     # ========================================================
 
     rgb = cv2.cvtColor(
@@ -492,17 +650,17 @@ def measure_lens(
         cv2.COLOR_BGR2RGB
     )
 
+
     pil_image = Image.fromarray(
         rgb
     )
+
 
     width, height = pil_image.size
 
 
     # ========================================================
-    # 13. CREATE SEARCH POINTS
-    #
-    # Allows lens to appear in different positions.
+    # 13. SEARCH POINT GRID
     # ========================================================
 
     x_positions = np.linspace(
@@ -510,6 +668,7 @@ def measure_lens(
         width * 0.85,
         5
     )
+
 
     y_positions = np.linspace(
         height * 0.12,
@@ -529,20 +688,28 @@ def measure_lens(
             object_points.append(
                 [
                     [
-                        int(x_point),
-                        int(y_point)
+                        int(
+                            x_point
+                        ),
+                        int(
+                            y_point
+                        )
                     ]
                 ]
             )
 
+
             object_labels.append(
-                [1]
+                [
+                    1
+                ]
             )
 
 
     input_points = [
         object_points
     ]
+
 
     input_labels = [
         object_labels
@@ -572,7 +739,9 @@ def measure_lens(
     processed_masks = (
         processor.post_process_masks(
             outputs.pred_masks.cpu(),
-            inputs["original_sizes"]
+            inputs[
+                "original_sizes"
+            ]
         )
     )
 
@@ -581,7 +750,7 @@ def measure_lens(
 
 
     # ========================================================
-    # 15. FIND BEST PLAUSIBLE LENS MASK
+    # 15. CHOOSE BEST LENS MASK
     # ========================================================
 
     best_mask = None
@@ -621,6 +790,7 @@ def measure_lens(
 
 
         if not candidate_contours:
+
             continue
 
 
@@ -638,12 +808,13 @@ def measure_lens(
 
 
         # ----------------------------------------------------
-        # Reject contours touching image border
+        # Reject contours touching edge
         # ----------------------------------------------------
 
         x, y, w, h = cv2.boundingRect(
             contour
         )
+
 
         margin = 3
 
@@ -662,7 +833,7 @@ def measure_lens(
 
 
         # ----------------------------------------------------
-        # Convert candidate contour into millimeters
+        # Convert candidate to millimeters
         # ----------------------------------------------------
 
         contour_points = contour.reshape(
@@ -682,6 +853,7 @@ def measure_lens(
             pixels_per_mm_x
         )
 
+
         physical_points[:, 1] /= (
             pixels_per_mm_y
         )
@@ -696,31 +868,34 @@ def measure_lens(
         )
 
 
-        # ----------------------------------------------------
-        # Bounding dimensions for plausibility filter
-        # ----------------------------------------------------
-
         physical_rect = cv2.minAreaRect(
             physical_contour
         )
 
-        dim1 = physical_rect[1][0]
-        dim2 = physical_rect[1][1]
+
+        dimension_1 = (
+            physical_rect[1][0]
+        )
+
+        dimension_2 = (
+            physical_rect[1][1]
+        )
 
 
         candidate_width = max(
-            dim1,
-            dim2
+            dimension_1,
+            dimension_2
         )
 
+
         candidate_height = min(
-            dim1,
-            dim2
+            dimension_1,
+            dimension_2
         )
 
 
         # ----------------------------------------------------
-        # Broad physical-size filter
+        # Physical size filter
         # ----------------------------------------------------
 
         if not (
@@ -753,6 +928,7 @@ def measure_lens(
 
 
         if rect_area <= 0:
+
             continue
 
 
@@ -816,7 +992,7 @@ def measure_lens(
 
 
         # ----------------------------------------------------
-        # Shape score
+        # Shape preference
         # ----------------------------------------------------
 
         shape_score = (
@@ -858,7 +1034,7 @@ def measure_lens(
 
 
     # ========================================================
-    # 16. CREATE CLEAN FINAL MASK
+    # 16. CLEAN FINAL MASK
     # ========================================================
 
     clean_mask = np.zeros_like(
@@ -868,7 +1044,9 @@ def measure_lens(
 
     cv2.drawContours(
         clean_mask,
-        [best_contour],
+        [
+            best_contour
+        ],
         -1,
         255,
         thickness=cv2.FILLED
@@ -888,7 +1066,7 @@ def measure_lens(
 
 
     # ========================================================
-    # 17. CONVERT FINAL CONTOUR TO MILLIMETERS
+    # 17. FINAL CONTOUR IN MILLIMETERS
     # ========================================================
 
     contour_points = (
@@ -912,6 +1090,7 @@ def measure_lens(
         pixels_per_mm_x
     )
 
+
     physical_points[:, 1] /= (
         pixels_per_mm_y
     )
@@ -925,19 +1104,26 @@ def measure_lens(
         )
     )
 
+
     # ========================================================
-    # 18. BOXING DIMENSIONS
+    # 18. A / B BOXING DIMENSIONS
     # ========================================================
 
     physical_rect = cv2.minAreaRect(
         physical_contour
     )
 
-    dimension_1_mm = physical_rect[1][0]
-    dimension_2_mm = physical_rect[1][1]
 
-    # A = larger lens dimension
-    # B = smaller lens dimension
+    dimension_1_mm = (
+        physical_rect[1][0]
+    )
+
+
+    dimension_2_mm = (
+        physical_rect[1][1]
+    )
+
+
     A_mm = float(
         max(
             dimension_1_mm,
@@ -945,12 +1131,15 @@ def measure_lens(
         )
     )
 
+
     B_mm = float(
         min(
             dimension_1_mm,
             dimension_2_mm
         )
     )
+
+
     # ========================================================
     # 19. PERIMETER
     # ========================================================
@@ -975,7 +1164,23 @@ def measure_lens(
 
 
     # ========================================================
-    # 21. DRAW RESULT
+    # 21. EXPORT 1:1 SVG
+    # ========================================================
+
+    svg_path = os.path.join(
+        output_folder,
+        "lens_contour.svg"
+    )
+
+
+    create_svg_from_contour(
+        physical_points,
+        svg_path
+    )
+
+
+    # ========================================================
+    # 22. DRAW FINAL MEASUREMENT
     # ========================================================
 
     pixel_rect = cv2.minAreaRect(
@@ -995,31 +1200,56 @@ def measure_lens(
     )
 
 
+    # Green boxing rectangle
     cv2.drawContours(
         measured_image,
-        [box],
+        [
+            box
+        ],
         0,
-        (0, 255, 0),
+        (
+            0,
+            255,
+            0
+        ),
         2
     )
 
 
+    # Blue actual lens contour
     cv2.drawContours(
         measured_image,
-        [best_contour],
+        [
+            best_contour
+        ],
         -1,
-        (255, 0, 0),
+        (
+            255,
+            0,
+            0
+        ),
         2
     )
 
+
+    # --------------------------------------------------------
+    # Measurement text
+    # --------------------------------------------------------
 
     cv2.putText(
         measured_image,
         f"A: {A_mm:.2f} mm",
-        (10, 30),
+        (
+            10,
+            30
+        ),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.65,
-        (0, 255, 0),
+        (
+            0,
+            255,
+            0
+        ),
         2
     )
 
@@ -1027,10 +1257,17 @@ def measure_lens(
     cv2.putText(
         measured_image,
         f"B: {B_mm:.2f} mm",
-        (10, 60),
+        (
+            10,
+            60
+        ),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.65,
-        (0, 255, 0),
+        (
+            0,
+            255,
+            0
+        ),
         2
     )
 
@@ -1038,10 +1275,17 @@ def measure_lens(
     cv2.putText(
         measured_image,
         f"P: {perimeter_mm:.2f} mm",
-        (10, 90),
+        (
+            10,
+            90
+        ),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.65,
-        (0, 255, 0),
+        (
+            0,
+            255,
+            0
+        ),
         2
     )
 
@@ -1059,12 +1303,15 @@ def measure_lens(
 
 
     # ========================================================
-    # 22. RETURN RESULTS
+    # 23. RETURN RESULTS
     # ========================================================
 
     return {
 
-        # Required measurements
+        # ----------------------------------------------------
+        # Required lens measurements
+        # ----------------------------------------------------
+
         "A_mm":
             round(
                 A_mm,
@@ -1089,7 +1336,11 @@ def measure_lens(
                 2
             ),
 
+
+        # ----------------------------------------------------
         # Compatibility aliases
+        # ----------------------------------------------------
+
         "width_mm":
             round(
                 A_mm,
@@ -1102,7 +1353,11 @@ def measure_lens(
                 2
             ),
 
+
+        # ----------------------------------------------------
         # Calibration
+        # ----------------------------------------------------
+
         "pixels_per_mm_x":
             round(
                 float(
@@ -1119,33 +1374,55 @@ def measure_lens(
                 4
             ),
 
+
+        # ----------------------------------------------------
         # Marker information
+        # ----------------------------------------------------
+
         "markers_detected":
             int(
-                len(ids)
+                len(
+                    ids
+                )
             ),
 
         "marker_ids":
             [
-                int(x)
-                for x
+                int(
+                    marker_id
+                )
+                for marker_id
                 in ids.flatten()
             ],
 
         "padding_used":
             used_padding,
 
-        # Segmentation information
+
+        # ----------------------------------------------------
+        # AI information
+        # ----------------------------------------------------
+
         "sam_candidates":
             int(
                 candidates_found
             ),
 
-        # Preserve contour for upcoming SVG / STL stage
+
+        # ----------------------------------------------------
+        # Physical contour
+        #
+        # Used later for frame/STL generation.
+        # ----------------------------------------------------
+
         "contour_mm":
             physical_points.tolist(),
 
+
+        # ----------------------------------------------------
         # Output files
+        # ----------------------------------------------------
+
         "original_path":
             original_path,
 
@@ -1159,5 +1436,8 @@ def measure_lens(
             mask_path,
 
         "measured_path":
-            measured_path
+            measured_path,
+
+        "svg_path":
+            svg_path
     }

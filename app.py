@@ -21,9 +21,7 @@ st.set_page_config(
 # HEADER
 # ============================================================
 
-st.title(
-    "👓 OptiXAI"
-)
+st.title("👓 OptiXAI")
 
 st.write(
     "Measure recycled eyeglass lenses using AI and computer vision."
@@ -53,9 +51,7 @@ eye_side = st.radio(
 # CAMERA
 # ============================================================
 
-st.subheader(
-    "Take a picture"
-)
+st.subheader("Take a picture")
 
 camera_photo = st.camera_input(
     "Position the lens and all four ArUco markers "
@@ -67,9 +63,7 @@ camera_photo = st.camera_input(
 # FILE UPLOAD FALLBACK
 # ============================================================
 
-st.write(
-    "Or upload an existing image:"
-)
+st.write("Or upload an existing image:")
 
 uploaded_file = st.file_uploader(
     "Upload lens image",
@@ -84,42 +78,27 @@ uploaded_file = st.file_uploader(
 
 # ============================================================
 # CHOOSE IMAGE SOURCE
-#
-# Camera has priority.
 # ============================================================
 
 if camera_photo is not None:
-
     image_file = camera_photo
-
 else:
-
     image_file = uploaded_file
 
 
 # ============================================================
-# PROCESS SELECTED IMAGE
+# PROCESS IMAGE
 # ============================================================
 
 if image_file is not None:
 
-    # --------------------------------------------------------
-    # Preview
-    # --------------------------------------------------------
-
-    st.subheader(
-        "Selected image"
-    )
+    st.subheader("Selected image")
 
     st.image(
         image_file,
         use_container_width=True
     )
 
-
-    # --------------------------------------------------------
-    # Analyze button
-    # --------------------------------------------------------
 
     if st.button(
         "Analyze Lens",
@@ -136,30 +115,19 @@ if image_file is not None:
                 "segmenting the lens and calculating dimensions..."
             ):
 
-                # ------------------------------------------------
-                # Get extension
-                # ------------------------------------------------
-
                 filename = getattr(
                     image_file,
                     "name",
                     "lens.jpg"
                 )
 
-
                 suffix = os.path.splitext(
                     filename
                 )[1]
 
-
                 if not suffix:
-
                     suffix = ".jpg"
 
-
-                # ------------------------------------------------
-                # Save temporary copy
-                # ------------------------------------------------
 
                 with tempfile.NamedTemporaryFile(
                     delete=False,
@@ -170,14 +138,8 @@ if image_file is not None:
                         image_file.getbuffer()
                     )
 
-                    temp_path = (
-                        temp_file.name
-                    )
+                    temp_path = temp_file.name
 
-
-                # ------------------------------------------------
-                # Run OptiXAI pipeline
-                # ------------------------------------------------
 
                 result = measure_lens(
                     temp_path,
@@ -198,18 +160,12 @@ if image_file is not None:
             # MAIN MEASUREMENTS
             # ====================================================
 
-            st.subheader(
-                "Lens Measurements"
-            )
+            st.subheader("Lens Measurements")
 
-
-            col1, col2, col3 = st.columns(
-                3
-            )
+            col1, col2, col3 = st.columns(3)
 
 
             with col1:
-
                 st.metric(
                     "A — Width",
                     f'{result["A_mm"]:.2f} mm'
@@ -217,7 +173,6 @@ if image_file is not None:
 
 
             with col2:
-
                 st.metric(
                     "B — Height",
                     f'{result["B_mm"]:.2f} mm'
@@ -225,7 +180,6 @@ if image_file is not None:
 
 
             with col3:
-
                 st.metric(
                     "Perimeter",
                     f'{result["perimeter_mm"]:.2f} mm'
@@ -233,34 +187,49 @@ if image_file is not None:
 
 
             # ====================================================
-            # SECONDARY INFORMATION
+            # SVG EXPORT
             # ====================================================
 
-            with st.expander(
-                "Additional measurement information"
-            ):
+            st.subheader("Export Lens Contour")
 
-                st.write(
-                    "**Lens area:**",
-                    f'{result["area_mm2"]:.2f} mm²'
+            svg_filename = (
+                "left_lens_contour.svg"
+                if eye_side == "Left lens"
+                else "right_lens_contour.svg"
+            )
+
+            with open(
+                result["svg_path"],
+                "rb"
+            ) as svg_file:
+
+                st.download_button(
+                    label="Download 1:1 SVG Contour",
+                    data=svg_file.read(),
+                    file_name=svg_filename,
+                    mime="image/svg+xml",
+                    use_container_width=True
                 )
+
+            st.caption(
+                "The SVG is exported at real-world 1:1 scale "
+                "in millimeters. Print at 100% / actual size."
+            )
 
 
             # ====================================================
             # FINAL MEASURED IMAGE
             # ====================================================
 
-            st.subheader(
-                "Measured Lens"
-            )
-
+            st.subheader("Measured Lens")
 
             st.image(
                 result["measured_path"],
                 caption=(
                     f"{eye_side}: "
                     f'A = {result["A_mm"]:.2f} mm, '
-                    f'B = {result["B_mm"]:.2f} mm'
+                    f'B = {result["B_mm"]:.2f} mm, '
+                    f'P = {result["perimeter_mm"]:.2f} mm'
                 ),
                 use_container_width=True
             )
@@ -274,13 +243,7 @@ if image_file is not None:
                 "How OptiXAI processed the image"
             )
 
-
-            (
-                tab1,
-                tab2,
-                tab3,
-                tab4
-            ) = st.tabs(
+            tab1, tab2, tab3, tab4 = st.tabs(
                 [
                     "1. Reference Detection",
                     "2. Perspective Correction",
@@ -290,63 +253,37 @@ if image_file is not None:
             )
 
 
-            # ----------------------------------------------------
-            # ArUco detection
-            # ----------------------------------------------------
-
             with tab1:
-
                 st.image(
                     result["aruco_path"],
                     caption=(
                         "Detected ArUco reference markers "
-                        "used for scale and perspective calibration"
+                        "for scale and perspective calibration"
                     ),
                     use_container_width=True
                 )
 
-
-            # ----------------------------------------------------
-            # Rectification
-            # ----------------------------------------------------
 
             with tab2:
-
                 st.image(
                     result["rectified_path"],
-                    caption=(
-                        "Perspective-corrected top-down image"
-                    ),
+                    caption="Perspective-corrected top-down image",
                     use_container_width=True
                 )
 
-
-            # ----------------------------------------------------
-            # Segmentation
-            # ----------------------------------------------------
 
             with tab3:
-
                 st.image(
                     result["mask_path"],
-                    caption=(
-                        "Lens isolated using SAM 2 segmentation"
-                    ),
+                    caption="Lens isolated using SAM 2 segmentation",
                     use_container_width=True
                 )
 
 
-            # ----------------------------------------------------
-            # Final measurement
-            # ----------------------------------------------------
-
             with tab4:
-
                 st.image(
                     result["measured_path"],
-                    caption=(
-                        "Measured lens contour in real-world units"
-                    ),
+                    caption="Final lens measurement",
                     use_container_width=True
                 )
 
@@ -355,78 +292,79 @@ if image_file is not None:
             # TECHNICAL DETAILS
             # ====================================================
 
-            with st.expander(
-                "Technical details"
-            ):
+            with st.expander("Technical details"):
 
                 st.write(
                     "**Lens side:**",
                     eye_side
                 )
 
+                st.write(
+                    "**A — Width:**",
+                    result["A_mm"],
+                    "mm"
+                )
+
+                st.write(
+                    "**B — Height:**",
+                    result["B_mm"],
+                    "mm"
+                )
+
+                st.write(
+                    "**Perimeter:**",
+                    result["perimeter_mm"],
+                    "mm"
+                )
+
+                st.write(
+                    "**Area:**",
+                    result["area_mm2"],
+                    "mm²"
+                )
 
                 st.write(
                     "**ArUco markers detected:**",
-                    result[
-                        "markers_detected"
-                    ]
+                    result["markers_detected"]
                 )
-
 
                 st.write(
                     "**Marker IDs:**",
-                    result[
-                        "marker_ids"
-                    ]
+                    result["marker_ids"]
                 )
-
 
                 st.write(
                     "**Horizontal calibration:**",
-                    result[
-                        "pixels_per_mm_x"
-                    ],
+                    result["pixels_per_mm_x"],
                     "pixels/mm"
                 )
-
 
                 st.write(
                     "**Vertical calibration:**",
-                    result[
-                        "pixels_per_mm_y"
-                    ],
+                    result["pixels_per_mm_y"],
                     "pixels/mm"
                 )
 
-
                 st.write(
                     "**Plausible SAM masks:**",
-                    result[
-                        "sam_candidates"
-                    ]
+                    result["sam_candidates"]
                 )
-
 
                 st.write(
-                    "**Marker edge-padding fallback used:**",
-                    result[
-                        "padding_used"
-                    ]
+                    "**Edge-padding fallback used:**",
+                    result["padding_used"]
                 )
-
 
                 st.write(
                     "**Contour points preserved:**",
                     len(
-                        result[
-                            "contour_mm"
-                        ]
+                        result["contour_mm"]
                     )
                 )
 
 
         # ========================================================
-        # ERRORS
+        # ERROR HANDLING
         # ========================================================
 
         except Exception as error:
@@ -435,33 +373,27 @@ if image_file is not None:
                 "OptiXAI could not analyze this image."
             )
 
-
             st.warning(
                 "Make sure all four ArUco markers are visible, "
                 "the image is reasonably sharp, and the lens "
                 "is inside the reference area."
             )
 
-
             st.write(
                 "Technical error:",
-                str(
-                    error
-                )
+                str(error)
             )
 
 
         # ========================================================
-        # REMOVE TEMP FILE
+        # DELETE TEMP FILE
         # ========================================================
 
         finally:
 
             if (
                 temp_path is not None
-                and os.path.exists(
-                    temp_path
-                )
+                and os.path.exists(temp_path)
             ):
 
                 os.remove(
@@ -475,11 +407,9 @@ if image_file is not None:
 
 st.divider()
 
-
 st.caption(
     "OptiXAI — AI-powered measurement of recycled eyeglass lenses."
 )
-
 
 st.caption(
     "Hackathon prototype uses calibrated ArUco markers "
